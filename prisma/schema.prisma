@@ -216,6 +216,7 @@ model Meal {
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   mealFoods MealFood[]
 
+  @@unique([userId, date, mealType])
   @@index([userId, date])
   @@map("meals")
 }

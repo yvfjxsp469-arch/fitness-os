@@ -63,6 +63,14 @@ export default async function DashboardPage() {
     select: { weightKg: true, date: true },
   });
 
+  // Today's nutrition summary
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todaySummary = await prisma.dailySummary.findUnique({
+    where: { userId_date: { userId, date: today } },
+    select: { totalCalories: true, totalProtein: true },
+  });
+
   const withMA7 = calcMovingAverage(
     weightRecords.map((r) => ({
       date: r.date,
@@ -129,7 +137,10 @@ export default async function DashboardPage() {
             <p className="text-sm font-medium text-white">⚖️ 记录体重</p>
             <p className="mt-1 text-xs text-zinc-500">每日称重记录</p>
           </a>
-          <CalorieSummary />
+          <CalorieSummary
+            totalCalories={todaySummary?.totalCalories ?? null}
+            totalProtein={todaySummary?.totalProtein ? Number(todaySummary.totalProtein) : null}
+          />
         </div>
       </main>
     </div>
