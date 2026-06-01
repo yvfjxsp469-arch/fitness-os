@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { weightSchema } from "@/validators/weight";
+import {
+  upsertDailySummaryWeight,
+  syncDailySummaryAfterDelete,
+} from "@/lib/fitness/sync-daily-summary";
 
 async function getUserId() {
   const userId = await getSession();
@@ -26,9 +30,7 @@ export async function createWeightRecord(formData: FormData) {
   const { date, weightKg, notes } = parsed.data;
 
   await prisma.weightRecord.upsert({
-    where: {
-      userId_date: { userId, date: new Date(date) },
-    },
+    where: { userId_date: { userId, date: new Date(date) } },
     update: { weightKg, notes },
     create: { userId, date: new Date(date), weightKg, notes },
   });
@@ -54,12 +56,21 @@ export async function updateWeightRecord(id: string, formData: FormData) {
 
   const { date, weightKg, notes } = parsed.data;
 
+  const old = await prisma.weightRecord.findUnique({
+    where: { id },
+    select: { date: true },
+  });
+
   const record = await prisma.weightRecord.update({
     where: { id, userId },
     data: { date: new Date(date), weightKg, notes },
   });
 
   await upsertDailySummaryWeight(userId, record.date, weightKg);
+
+  if (old && old.date.toISOString().slice(0, 10) !== record.date.toISOString().slice(0, 10)) {
+    await syncDailySummaryAfterDelete(userId, old.date);
+  }
 
   revalidatePath("/weight");
   revalidatePath("/");
@@ -73,47 +84,9 @@ export async function deleteWeightRecord(id: string) {
     where: { id, userId },
   });
 
-  // Sync DailySummary: remove weight or set to latest remaining
   await syncDailySummaryAfterDelete(userId, record.date);
 
   revalidatePath("/weight");
   revalidatePath("/");
   return { success: true };
-}
-
-async function upsertDailySummaryWeight(
-  userId: string,
-  date: Date,
-  weightKg: number
-) {
-  await prisma.dailySummary.upsert({
-    where: { userId_date: { userId, date } },
-    update: { weightKg },
-    create: { userId, date, weightKg, workoutCount: 0 },
-  });
-}
-
-async function syncDailySummaryAfterDelete(userId: string, deletedDate: Date) {
-  const latest = await prisma.weightRecord.findFirst({
-    where: { userId },
-    orderBy: { date: "desc" },
-  });
-
-  const summary = await prisma.dailySummary.findUnique({
-    where: { userId_date: { userId, date: deletedDate } },
-  });
-
-  if (summary) {
-    if (latest && latest.date.getTime() === deletedDate.getTime()) {
-      // Deleted record was the one in this day's summary; find the actual latest for that date
-      const sameDay = await prisma.weightRecord.findFirst({
-        where: { userId, date: deletedDate },
-        orderBy: { createdAt: "desc" },
-      });
-      await prisma.dailySummary.update({
-        where: { userId_date: { userId, date: deletedDate } },
-        data: { weightKg: sameDay?.weightKg ?? null },
-      });
-    }
-  }
 }
