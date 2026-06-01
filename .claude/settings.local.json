@@ -26,7 +26,8 @@
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/ -b /tmp/cookies.txt)",
       "Bash(curl -s -X POST http://localhost:3000/login -H \"Content-Type: application/x-www-form-urlencoded\" -d \"username=admin&password=wrong\" -w \"HTTP %{http_code}\\\\n\" -o /dev/null)",
       "Bash(curl -s http://localhost:3000/login)",
-      "Bash(curl -s -v -X POST http://localhost:3000/login -H \"Content-Type: application/x-www-form-urlencoded\" -H \"Next-Action: $\\(curl -s http://localhost:3000/login)"
+      "Bash(curl -s -v -X POST http://localhost:3000/login -H \"Content-Type: application/x-www-form-urlencoded\" -H \"Next-Action: $\\(curl -s http://localhost:3000/login)",
+      "Bash(git add *)"
     ]
   }
 }
