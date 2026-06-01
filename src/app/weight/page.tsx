@@ -12,19 +12,11 @@ export default async function WeightPage() {
   const userId = await getSession();
   if (!userId) redirect("/login");
 
-  // Last 100 records for the table
+  // Single query: last 100 records, descending (for table + chart)
   const records = await prisma.weightRecord.findMany({
     where: { userId },
     orderBy: { date: "desc" },
     take: 100,
-  });
-
-  // Chart data: last 90 days, ascending
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const chartRecords = await prisma.weightRecord.findMany({
-    where: { userId, date: { gte: ninetyDaysAgo } },
-    orderBy: { date: "asc" },
   });
 
   // Active goal for target line
@@ -32,20 +24,20 @@ export default async function WeightPage() {
     where: { userId, type: "WEIGHT", status: "ACTIVE" },
   });
 
-  const chartData = calcMovingAverage(
-    chartRecords.map((r) => ({
-      date: r.date,
-      weightKg: Number(r.weightKg),
-    }))
-  );
+  // Build ascending data once, compute MA7 once
+  const ascData = [...records].reverse().map((r) => ({
+    date: r.date,
+    weightKg: Number(r.weightKg),
+  }));
+  const withMA7 = calcMovingAverage(ascData);
 
-  // Calculate MA7 for each table record
-  const allAsc = [...records].reverse();
-  const allWithMA7 = calcMovingAverage(
-    allAsc.map((r) => ({ date: r.date, weightKg: Number(r.weightKg) }))
-  );
-  const ma7Map = new Map(allWithMA7.map((r) => [r.date.toISOString().slice(0, 10), r.ma7]));
+  // Chart: filter to last 90 days
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const chartData = withMA7.filter((r) => r.date >= ninetyDaysAgo);
 
+  // Table: MA7 lookup from same computation
+  const ma7Map = new Map(withMA7.map((r) => [r.date.toISOString().slice(0, 10), r.ma7]));
   const tableData = records.map((r) => ({
     id: r.id,
     date: r.date,
