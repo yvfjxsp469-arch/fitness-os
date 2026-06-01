@@ -288,23 +288,24 @@ async function main() {
   }
   check(orphans === 0, `zero orphan daily_summaries (found ${orphans})`);
 
-  // Check every date with meals has a summary
-  const mealDates = await prisma.meal.findMany({
-    where: { userId: uid },
-    select: { date: true },
-    distinct: ["date"],
+  // Check every date with MealFoods has a summary (empty meals don't need one)
+  const datesWithFoods = await prisma.mealFood.findMany({
+    where: { meal: { userId: uid } },
+    select: { meal: { select: { date: true } } },
+    distinct: ["mealId"],
   });
+  const uniqueDates = [...new Set(datesWithFoods.map((mf) => mf.meal.date.toISOString().slice(0, 10)))];
   let missing = 0;
-  for (const m of mealDates) {
+  for (const dateStr of uniqueDates) {
     const s = await prisma.dailySummary.findUnique({
-      where: { userId_date: { userId: uid, date: m.date } },
+      where: { userId_date: { userId: uid, date: new Date(dateStr) } },
     });
     if (!s) {
       missing++;
-      console.error(`  MISSING Summary: ${m.date.toISOString().slice(0, 10)}`);
+      console.error(`  MISSING Summary: ${dateStr}`);
     }
   }
-  check(missing === 0, `every meal date has summary (missing ${missing})`);
+  check(missing === 0, `every date with nutrition data has summary (missing ${missing})`);
 
   // ── Cleanup ──
   console.log("\n───────────────────────────────────");
