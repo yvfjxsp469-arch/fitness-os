@@ -151,6 +151,13 @@ export default async function DashboardPage() {
             <p className="text-sm font-medium text-white">🏋️ 记录训练</p>
             <p className="mt-1 text-xs text-zinc-500">力量+有氧追踪</p>
           </a>
+          <a
+            href="/analytics"
+            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-colors"
+          >
+            <p className="text-sm font-medium text-white">📊 数据分析</p>
+            <p className="mt-1 text-xs text-zinc-500">趋势+PR统计</p>
+          </a>
           <CalorieSummary
             totalCalories={todaySummary?.totalCalories ?? null}
             totalProtein={todaySummary?.totalProtein ? Number(todaySummary.totalProtein) : null}
