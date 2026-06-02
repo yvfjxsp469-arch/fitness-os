@@ -64,8 +64,8 @@ export default async function DashboardPage() {
   });
 
   // Today's nutrition summary
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const today = new Date(todayStr);
   const todaySummary = await prisma.dailySummary.findUnique({
     where: { userId_date: { userId, date: today } },
     select: { totalCalories: true, totalProtein: true },

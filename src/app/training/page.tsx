@@ -18,7 +18,8 @@ export default async function TrainingPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const dateStr = params.date || new Date().toISOString().slice(0, 10);
-  const date = new Date(dateStr + "T00:00:00");
+  const dayStart = new Date(dateStr);
+  const dayEnd = new Date(dateStr + "T23:59:59.999Z");
 
   // Templates for selector
   const templates = await prisma.trainingTemplate.findMany({
@@ -28,7 +29,7 @@ export default async function TrainingPage({ searchParams }: PageProps) {
 
   // Today's workouts with full details
   const workouts = await prisma.workout.findMany({
-    where: { userId, date },
+    where: { userId, date: { gte: dayStart, lte: dayEnd } },
     include: {
       exercises: {
         orderBy: { order: "asc" },
@@ -42,12 +43,12 @@ export default async function TrainingPage({ searchParams }: PageProps) {
   });
 
   // Recent history (last 7 days, excluding today)
-  const sevenDaysAgo = new Date(date);
+  const sevenDaysAgo = new Date(dateStr);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const recentWorkouts = await prisma.workout.findMany({
     where: {
       userId,
-      date: { gte: sevenDaysAgo, lt: date },
+      date: { gte: sevenDaysAgo, lt: dayStart },
     },
     include: {
       exercises: { select: { id: true } },

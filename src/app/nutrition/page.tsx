@@ -19,11 +19,12 @@ export default async function NutritionPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const dateStr = params.date || new Date().toISOString().slice(0, 10);
-  const date = new Date(dateStr + "T00:00:00");
+  const dayStart = new Date(dateStr);
+  const dayEnd = new Date(dateStr + "T23:59:59.999Z");
 
   // Single query: all meals with foods for the date
   const meals = await prisma.meal.findMany({
-    where: { userId, date },
+    where: { userId, date: { gte: dayStart, lte: dayEnd } },
     include: {
       mealFoods: {
         include: {
@@ -38,7 +39,7 @@ export default async function NutritionPage({ searchParams }: PageProps) {
 
   // DailySummary totals
   const summary = await prisma.dailySummary.findUnique({
-    where: { userId_date: { userId, date } },
+    where: { userId_date: { userId, date: dayStart } },
     select: {
       totalCalories: true,
       totalProtein: true,
