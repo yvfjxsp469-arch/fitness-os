@@ -14,32 +14,10 @@ export default async function DashboardPage() {
   const userId = await getSession();
   if (!userId) redirect("/login");
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { displayName: true },
-  });
-
-  // Latest 2 weight records for delta
-  const latestWeights = await prisma.weightRecord.findMany({
-    where: { userId },
-    orderBy: { date: "desc" },
-    take: 2,
-  });
-
-  // 90 days of weight records for MA7 calculation
+  // Compute date boundaries (no queries)
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const weightRecords = await prisma.weightRecord.findMany({
-    where: { userId, date: { gte: ninetyDaysAgo } },
-    orderBy: { date: "asc" },
-  });
 
-  // Active weight goal
-  const goal = await prisma.goal.findFirst({
-    where: { userId, type: "WEIGHT", status: "ACTIVE" },
-  });
-
-  // Weekly workout count
   const now = new Date();
   const dayOfWeek = now.getDay();
   const startOfWeek = new Date(now);
@@ -49,38 +27,51 @@ export default async function DashboardPage() {
   endOfWeek.setDate(startOfWeek.getDate() + 6);
   endOfWeek.setHours(23, 59, 59, 999);
 
-  const workoutCount = await prisma.workout.count({
-    where: {
-      userId,
-      date: { gte: startOfWeek, lte: endOfWeek },
-    },
-  });
-
-  // First weight record for total lost calculation
-  const firstWeight = await prisma.weightRecord.findFirst({
-    where: { userId },
-    orderBy: { date: "asc" },
-    select: { weightKg: true, date: true },
-  });
-
-  // Today's nutrition summary
   const todayStr = new Date().toISOString().slice(0, 10);
   const today = new Date(todayStr);
-  const todaySummary = await prisma.dailySummary.findUnique({
-    where: { userId_date: { userId, date: today } },
-    select: { totalCalories: true, totalProtein: true },
-  });
 
-  const withMA7 = calcMovingAverage(
-    weightRecords.map((r) => ({
-      date: r.date,
-      weightKg: Number(r.weightKg),
-    }))
-  );
+  // Parallel: all independent queries, latest 2 weights derived from weightRecords
+  const [user, weightRecords, goal, workoutCount, firstWeight, todaySummary] =
+    await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { displayName: true },
+      }),
+      prisma.weightRecord.findMany({
+        where: { userId, date: { gte: ninetyDaysAgo } },
+        orderBy: { date: "asc" },
+      }),
+      prisma.goal.findFirst({
+        where: { userId, type: "WEIGHT", status: "ACTIVE" },
+      }),
+      prisma.workout.count({
+        where: { userId, date: { gte: startOfWeek, lte: endOfWeek } },
+      }),
+      prisma.weightRecord.findFirst({
+        where: { userId },
+        orderBy: { date: "asc" },
+        select: { weightKg: true, date: true },
+      }),
+      prisma.dailySummary.findUnique({
+        where: { userId_date: { userId, date: today } },
+        select: { totalCalories: true, totalProtein: true },
+      }),
+    ]);
 
-  const latestWeight = latestWeights[0]?.weightKg ?? null;
-  const previousWeight = latestWeights[1]?.weightKg ?? null;
-  const totalLost = firstWeight ? Number(firstWeight.weightKg) - (Number(latestWeight) || Number(firstWeight.weightKg)) : 0;
+  const rawRecords = weightRecords.map((r) => ({
+    date: r.date,
+    weightKg: Number(r.weightKg),
+  }));
+
+  const withMA7 = calcMovingAverage(rawRecords);
+
+  const latestWeight =
+    rawRecords.length > 0 ? rawRecords[rawRecords.length - 1].weightKg : null;
+  const previousWeight =
+    rawRecords.length > 1 ? rawRecords[rawRecords.length - 2].weightKg : null;
+  const totalLost = firstWeight
+    ? Number(firstWeight.weightKg) - (latestWeight ?? Number(firstWeight.weightKg))
+    : 0;
 
   return (
     <div className="min-h-screen bg-zinc-950">

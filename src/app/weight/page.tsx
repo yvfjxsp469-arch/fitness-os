@@ -12,17 +12,18 @@ export default async function WeightPage() {
   const userId = await getSession();
   if (!userId) redirect("/login");
 
-  // Single query: last 100 records, descending (for table + chart)
-  const records = await prisma.weightRecord.findMany({
-    where: { userId },
-    orderBy: { date: "desc" },
-    take: 100,
-  });
-
-  // Active goal for target line
-  const goal = await prisma.goal.findFirst({
-    where: { userId, type: "WEIGHT", status: "ACTIVE" },
-  });
+  const [records, goal] = await Promise.all([
+    // Last 100 records, descending (for table + chart)
+    prisma.weightRecord.findMany({
+      where: { userId },
+      orderBy: { date: "desc" },
+      take: 100,
+    }),
+    // Active goal for target line
+    prisma.goal.findFirst({
+      where: { userId, type: "WEIGHT", status: "ACTIVE" },
+    }),
+  ]);
 
   // Build ascending data once, compute MA7 once
   const ascData = [...records].reverse().map((r) => ({

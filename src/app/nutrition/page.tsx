@@ -22,32 +22,31 @@ export default async function NutritionPage({ searchParams }: PageProps) {
   const dayStart = new Date(dateStr);
   const dayEnd = new Date(dateStr + "T23:59:59.999Z");
 
-  // Single query: all meals with foods for the date
-  const meals = await prisma.meal.findMany({
-    where: { userId, date: { gte: dayStart, lte: dayEnd } },
-    include: {
-      mealFoods: {
-        include: {
-          food: {
-            select: { name: true, servingSize: true, servingUnit: true },
+  const [meals, summary] = await Promise.all([
+    prisma.meal.findMany({
+      where: { userId, date: { gte: dayStart, lte: dayEnd } },
+      include: {
+        mealFoods: {
+          include: {
+            food: {
+              select: { name: true, servingSize: true, servingUnit: true },
+            },
           },
         },
       },
-    },
-    orderBy: { mealType: "asc" },
-  });
-
-  // DailySummary totals
-  const summary = await prisma.dailySummary.findUnique({
-    where: { userId_date: { userId, date: dayStart } },
-    select: {
-      totalCalories: true,
-      totalProtein: true,
-      totalCarbs: true,
-      totalFat: true,
-      totalFiber: true,
-    },
-  });
+      orderBy: { mealType: "asc" },
+    }),
+    prisma.dailySummary.findUnique({
+      where: { userId_date: { userId, date: dayStart } },
+      select: {
+        totalCalories: true,
+        totalProtein: true,
+        totalCarbs: true,
+        totalFat: true,
+        totalFiber: true,
+      },
+    }),
+  ]);
 
   const mealTypes = ["BREAKFAST", "LUNCH", "DINNER", "SNACK1", "SNACK2"] as const;
   const mealsByType = new Map(mealTypes.map((mt) => [mt, meals.filter((m) => m.mealType === mt)]));

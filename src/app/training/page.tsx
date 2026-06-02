@@ -21,40 +21,41 @@ export default async function TrainingPage({ searchParams }: PageProps) {
   const dayStart = new Date(dateStr);
   const dayEnd = new Date(dateStr + "T23:59:59.999Z");
 
-  // Templates for selector
-  const templates = await prisma.trainingTemplate.findMany({
-    where: { userId, isActive: true },
-    select: { id: true, name: true, description: true },
-  });
-
-  // Today's workouts with full details
-  const workouts = await prisma.workout.findMany({
-    where: { userId, date: { gte: dayStart, lte: dayEnd } },
-    include: {
-      exercises: {
-        orderBy: { order: "asc" },
-        include: {
-          exercise: { select: { id: true, name: true, muscleGroup: true } },
-          sets: { orderBy: { setNumber: "asc" } },
-        },
-      },
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  // Recent history (last 7 days, excluding today)
   const sevenDaysAgo = new Date(dateStr);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const recentWorkouts = await prisma.workout.findMany({
-    where: {
-      userId,
-      date: { gte: sevenDaysAgo, lt: dayStart },
-    },
-    include: {
-      exercises: { select: { id: true } },
-    },
-    orderBy: { date: "desc" },
-  });
+
+  const [templates, workouts, recentWorkouts] = await Promise.all([
+    // Templates for selector
+    prisma.trainingTemplate.findMany({
+      where: { userId, isActive: true },
+      select: { id: true, name: true, description: true },
+    }),
+    // Today's workouts with full details
+    prisma.workout.findMany({
+      where: { userId, date: { gte: dayStart, lte: dayEnd } },
+      include: {
+        exercises: {
+          orderBy: { order: "asc" },
+          include: {
+            exercise: { select: { id: true, name: true, muscleGroup: true } },
+            sets: { orderBy: { setNumber: "asc" } },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    // Recent history (last 7 days, excluding today)
+    prisma.workout.findMany({
+      where: {
+        userId,
+        date: { gte: sevenDaysAgo, lt: dayStart },
+      },
+      include: {
+        exercises: { select: { id: true } },
+      },
+      orderBy: { date: "desc" },
+    }),
+  ]);
 
   return (
     <div className="min-h-screen bg-zinc-950">

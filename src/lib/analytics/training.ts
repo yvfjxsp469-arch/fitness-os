@@ -34,28 +34,90 @@ function epley1RM(weightKg: number, reps: number): number {
 
 export async function getTrainingAnalytics(userId: string): Promise<TrainingAnalytics> {
   const today = getChinaToday();
-  const twelveWeeksAgo = getChinaDaysAgo(today, 83); // 12 * 7 = 84 days, -1 for inclusive
+  const twelveWeeksAgo = getChinaDaysAgo(today, 83);
   const range = getChinaDateRange(twelveWeeksAgo, today);
 
+  // Round 1: workouts only (no includes)
   const workouts = await prisma.workout.findMany({
     where: { userId, date: range },
-    include: {
-      exercises: {
-        include: {
-          exercise: { select: { id: true, name: true, muscleGroup: true } },
-          sets: {
-            where: {
-              isWarmup: false,
-              weightKg: { not: null },
-              reps: { not: null },
-            },
-            select: { weightKg: true, reps: true },
-          },
-        },
-      },
-    },
     orderBy: { date: "asc" },
   });
+
+  if (workouts.length === 0) {
+    const currentMonday = getChinaMonday(today);
+    const weeklyTemplate = new Map<string, TrainingChartData>();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(currentMonday);
+      d.setUTCDate(d.getUTCDate() - (11 - i) * 7);
+      const key = d.toISOString().slice(0, 10);
+      weeklyTemplate.set(key, {
+        week: formatChinaShortDate(d),
+        strength: 0,
+        cardio: 0,
+        rest: 0,
+        count: 0,
+        minutes: 0,
+      });
+    }
+    return {
+      monthlyWorkouts: 0,
+      monthlyMinutes: 0,
+      avgWorkoutsPerWeek: 0,
+      topMuscleGroups: [],
+      weeklyData: [...weeklyTemplate.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, v]) => v),
+      prs: [],
+    };
+  }
+
+  const workoutIds = workouts.map((w) => w.id);
+
+  // Round 2: workout exercises
+  const workoutExercises = await prisma.workoutExercise.findMany({
+    where: { workoutId: { in: workoutIds } },
+    select: { id: true, workoutId: true, exerciseId: true },
+  });
+
+  const exerciseIds = [...new Set(workoutExercises.map((we) => we.exerciseId))];
+  const weIds = workoutExercises.map((we) => we.id);
+
+  // Round 3: exercises + filtered sets in parallel
+  const [exercises, exerciseSets] = await Promise.all([
+    exerciseIds.length > 0
+      ? prisma.exercise.findMany({
+          where: { id: { in: exerciseIds } },
+          select: { id: true, name: true, muscleGroup: true },
+        })
+      : [],
+    weIds.length > 0
+      ? prisma.exerciseSet.findMany({
+          where: {
+            workoutExerciseId: { in: weIds },
+            isWarmup: false,
+            weightKg: { not: null },
+            reps: { not: null },
+          },
+          select: { workoutExerciseId: true, weightKg: true, reps: true },
+        })
+      : [],
+  ]);
+
+  // Build lookup maps
+  const exerciseMap = new Map(exercises.map((e) => [e.id, e]));
+  const setsByWEId = new Map<string, { weightKg: number; reps: number }[]>();
+  for (const s of exerciseSets) {
+    if (s.weightKg === null || s.reps === null) continue;
+    const arr = setsByWEId.get(s.workoutExerciseId);
+    if (arr) arr.push({ weightKg: Number(s.weightKg), reps: s.reps });
+    else setsByWEId.set(s.workoutExerciseId, [{ weightKg: Number(s.weightKg), reps: s.reps }]);
+  }
+  const weByWorkoutId = new Map<string, typeof workoutExercises>();
+  for (const we of workoutExercises) {
+    const arr = weByWorkoutId.get(we.workoutId);
+    if (arr) arr.push(we);
+    else weByWorkoutId.set(we.workoutId, [we]);
+  }
 
   // --- Monthly stats ---
   const monthRange = getChinaMonthRange(today);
@@ -65,8 +127,6 @@ export async function getTrainingAnalytics(userId: string): Promise<TrainingAnal
   // --- Weekly grouping ---
   const currentMonday = getChinaMonday(today);
   const weeklyTemplate = new Map<string, TrainingChartData>();
-
-  // Pre-fill 12 weeks
   for (let i = 0; i < 12; i++) {
     const d = new Date(currentMonday);
     d.setUTCDate(d.getUTCDate() - (11 - i) * 7);
@@ -90,13 +150,11 @@ export async function getTrainingAnalytics(userId: string): Promise<TrainingAnal
   for (const w of workouts) {
     const dateStr = w.date.toISOString().slice(0, 10);
 
-    // Monthly aggregation
     if (w.date >= monthRange.gte && w.date <= monthRange.lte) {
       monthlyWorkouts++;
       monthlyMinutes += w.durationMin ?? 0;
     }
 
-    // Weekly aggregation
     const weekKey = getChinaMonday(dateStr);
     const week = weeklyTemplate.get(weekKey);
     if (week) {
@@ -107,15 +165,23 @@ export async function getTrainingAnalytics(userId: string): Promise<TrainingAnal
       else week.rest++;
     }
 
-    // Muscle groups + PRs
-    for (const we of w.exercises) {
-      const mg = we.exercise.muscleGroup;
+    const weList = weByWorkoutId.get(w.id);
+    if (!weList) continue;
+
+    for (const we of weList) {
+      const ex = exerciseMap.get(we.exerciseId);
+      if (!ex) continue;
+
+      const mg = ex.muscleGroup;
       muscleCount.set(mg, (muscleCount.get(mg) ?? 0) + 1);
 
-      const eid = we.exercise.id;
-      for (const s of we.sets) {
-        const weight = Number(s.weightKg);
-        const reps = s.reps!;
+      const eid = ex.id;
+      const sList = setsByWEId.get(we.id);
+      if (!sList) continue;
+
+      for (const s of sList) {
+        const weight = s.weightKg;
+        const reps = s.reps;
         const rm1 = epley1RM(weight, reps);
         const volume = weight * reps;
 
@@ -123,7 +189,7 @@ export async function getTrainingAnalytics(userId: string): Promise<TrainingAnal
         if (!existing) {
           prMap.set(eid, {
             exerciseId: eid,
-            exerciseName: we.exercise.name,
+            exerciseName: ex.name,
             best1RM: rm1,
             best1RMReps: reps,
             best1RMWeight: weight,
@@ -153,25 +219,21 @@ export async function getTrainingAnalytics(userId: string): Promise<TrainingAnal
     }
   }
 
-  // Weekly data in order
   const weeklyData = [...weeklyTemplate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, v]) => v);
 
-  // Avg workouts per week (only weeks with data)
   const activeWeeks = weeklyData.filter((w) => w.count > 0);
   const avgWorkoutsPerWeek =
     activeWeeks.length > 0
       ? Math.round((activeWeeks.reduce((s, w) => s + w.count, 0) / activeWeeks.length) * 10) / 10
       : 0;
 
-  // Top muscle groups (sorted descending, top 6)
   const topMuscleGroups = [...muscleCount.entries()]
     .sort(([, a], [, b]) => b - a)
     .slice(0, 6)
     .map(([group, count]) => ({ group, count }));
 
-  // PRs sorted by best1RM descending
   const prs = [...prMap.entries()].sort(
     ([, a], [, b]) => (b.best1RM ?? 0) - (a.best1RM ?? 0)
   );

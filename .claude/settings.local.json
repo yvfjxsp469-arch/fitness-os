@@ -28,7 +28,9 @@
       "Bash(curl -s http://localhost:3000/login)",
       "Bash(curl -s -v -X POST http://localhost:3000/login -H \"Content-Type: application/x-www-form-urlencoded\" -H \"Next-Action: $\\(curl -s http://localhost:3000/login)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
     ]
   }
 }
