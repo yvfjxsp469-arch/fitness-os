@@ -119,3 +119,43 @@ export async function syncDailySummaryNutrition(userId: string, date: Date) {
     },
   });
 }
+
+export async function syncDailySummaryTraining(userId: string, date: Date) {
+  const workouts = await prisma.workout.findMany({
+    where: { userId, date },
+    select: { durationMin: true },
+  });
+
+  const workoutCount = workouts.length;
+  const totalMinutes = workouts.reduce((s, w) => s + (w.durationMin ?? 0), 0);
+  const workoutMinutes = totalMinutes > 0 ? totalMinutes : null;
+
+  if (workoutCount === 0) {
+    const summary = await prisma.dailySummary.findUnique({
+      where: { userId_date: { userId, date } },
+    });
+    if (!summary) return;
+
+    const hasOther =
+      summary.weightKg !== null ||
+      summary.totalCalories !== null;
+
+    if (!hasOther) {
+      await prisma.dailySummary.delete({
+        where: { userId_date: { userId, date } },
+      });
+    } else {
+      await prisma.dailySummary.update({
+        where: { userId_date: { userId, date } },
+        data: { workoutCount: 0, workoutMinutes: null },
+      });
+    }
+    return;
+  }
+
+  await prisma.dailySummary.upsert({
+    where: { userId_date: { userId, date } },
+    update: { workoutCount, workoutMinutes },
+    create: { userId, date, workoutCount, workoutMinutes },
+  });
+}

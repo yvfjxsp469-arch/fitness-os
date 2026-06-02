@@ -129,13 +129,27 @@ export default async function DashboardPage() {
         />
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <a
             href="/weight"
             className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-colors"
           >
             <p className="text-sm font-medium text-white">⚖️ 记录体重</p>
             <p className="mt-1 text-xs text-zinc-500">每日称重记录</p>
+          </a>
+          <a
+            href="/nutrition"
+            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-colors"
+          >
+            <p className="text-sm font-medium text-white">🥗 记录饮食</p>
+            <p className="mt-1 text-xs text-zinc-500">三餐营养追踪</p>
+          </a>
+          <a
+            href="/training"
+            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-700 transition-colors"
+          >
+            <p className="text-sm font-medium text-white">🏋️ 记录训练</p>
+            <p className="mt-1 text-xs text-zinc-500">力量+有氧追踪</p>
           </a>
           <CalorieSummary
             totalCalories={todaySummary?.totalCalories ?? null}
